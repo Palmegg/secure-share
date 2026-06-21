@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Share short text securely with a one-time code. Content can only be retrieved once and expires automatically.">
+  <title>One time share</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css?v=1.0.8">
+  <style>[hidden], .force-hidden { display: none !important; }</style>
+  <script src="app.js?v=1.0.8" defer></script>
+</head>
+<body>
+  <main class="app">
+    <div class="lang-switch" role="group" aria-label="Language">
+      <button class="lang-button is-selected" type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button class="lang-button" type="button" data-lang="da" aria-pressed="false">DA</button>
+    </div>
+
+    <section class="panel choice-modal" id="homeView" role="dialog" aria-labelledby="choiceTitle" aria-describedby="choiceText">
+      <p class="eyebrow">One-time secure share</p>
+      <h1 id="choiceTitle" data-i18n="choiceTitle">What do you want to do?</h1>
+      <p class="lead" id="choiceText" data-i18n="choiceText">Choose one action.</p>
+      <div class="choice-grid">
+        <button class="choice" type="button" data-view="sendView">
+          <span data-i18n="send">Send</span>
+        </button>
+        <button class="choice" type="button" data-view="receiveView">
+          <span data-i18n="receive">Receive</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="panel view modal-card" id="sendView" hidden>
+      <div class="modal-head">
+        <button class="back" type="button" data-view="homeView" data-i18n="back">Back</button>
+        <h2 data-i18n="send">Send</h2>
+        <p class="muted" data-i18n="sendLead">Enter the content, generate a code, and share the code through another channel.</p>
+      </div>
+
+      <form id="sendForm" novalidate>
+        <label class="field" id="secretField">
+          <span data-i18n="content">Content</span>
+          <div class="secret-wrap">
+            <input id="secretInput" name="secret" type="text" maxlength="101" autocomplete="off" spellcheck="false">
+            <button class="icon-button" type="button" data-toggle="secretInput" aria-label="Show or hide content" data-i18n-aria-label="toggleSecret">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/></svg>
+            </button>
+          </div>
+          <span class="field-error" id="secretError" hidden>Enter the content you want to share.</span>
+        </label>
+
+        <div class="field">
+          <span data-i18n="expiry">Expiry</span>
+          <div class="ttl-options" id="ttlOptions" role="group" aria-label="Choose expiry time" data-i18n-aria-label="expiryAria">
+            <button class="ttl-option" type="button" data-ttl="60" data-i18n="oneMinute">1 min</button>
+            <button class="ttl-option is-selected" type="button" data-ttl="300" data-i18n="fiveMinutes">5 min</button>
+            <button class="ttl-option" type="button" data-ttl="600" data-i18n="tenMinutes">10 min</button>
+          </div>
+          <input id="ttlSelect" name="ttlSeconds" type="hidden" value="300">
+        </div>
+
+        <div class="meta-row">
+          <span id="sizeHint">0 / 101 characters</span>
+        </div>
+
+        <button class="primary" type="submit" data-i18n="generateCode">Generate one-time code</button>
+      </form>
+
+      <div class="result" id="sendResult" hidden>
+        <p data-i18n="yourCode">Your one-time code is:</p>
+        <div class="code" id="generatedCode">00000000</div>
+        <button class="secondary" type="button" data-copy="generatedCode" data-i18n="copyCode">Copy code</button>
+        <div class="qr-panel">
+          <img id="qrImage" alt="QR code for receiving on mobile" data-i18n-alt="qrAlt">
+          <div>
+            <strong data-i18n="scanMobile">Scan from mobile</strong>
+            <p data-i18n="qrLead">Opens the receive page with the code filled in.</p>
+            <a id="qrLink" class="inline-link" href="/" data-i18n="openReceiveLink">Open receive link</a>
+          </div>
+        </div>
+        <p class="warning"><span data-i18n="codeWarningPrefix">The code can only be used once and expires in</span> <span id="countdown">5:00</span>.</p>
+      </div>
+    </section>
+
+    <section class="panel view modal-card" id="receiveView" hidden>
+      <div class="modal-head">
+        <button class="back" type="button" data-view="homeView" data-i18n="back">Back</button>
+        <h2 data-i18n="receive">Receive</h2>
+        <p class="muted" data-i18n="receiveLead">Enter the one-time code. The content is deleted from the server when it is retrieved.</p>
+      </div>
+
+      <form id="receiveForm" novalidate>
+        <label class="field" id="codeField">
+          <span data-i18n="oneTimeCode">One-time code</span>
+          <input id="codeInput" name="code" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" autocomplete="one-time-code">
+          <span class="field-error" id="codeError" hidden>Enter the 8-digit one-time code.</span>
+        </label>
+        <button class="primary" type="submit" data-i18n="retrieveContent">Retrieve content</button>
+      </form>
+
+      <div class="result" id="receiveResult" hidden>
+        <h3 data-i18n="contentRetrieved">Content retrieved</h3>
+        <p class="warning" data-i18n="deletedWarning">The content has now been deleted from the server and cannot be retrieved again.</p>
+        <label class="field">
+          <span data-i18n="content">Content</span>
+          <div class="secret-wrap">
+            <input id="receivedSecret" type="password" readonly>
+            <button class="icon-button" type="button" data-toggle="receivedSecret" aria-label="Show or hide content" data-i18n-aria-label="toggleSecret">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/></svg>
+            </button>
+          </div>
+        </label>
+        <button class="secondary" type="button" data-copy="receivedSecret" data-i18n="copyContent">Copy content</button>
+      </div>
+    </section>
+
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+    <div class="used-toast" id="usedToast" role="alert" aria-live="assertive" hidden>
+      <strong data-i18n="codeUsed">Code used</strong>
+      <span><span data-i18n="reloadPrefix">The page reloads in</span> <span id="reloadCountdown">5</span> <span data-i18n="seconds">seconds.</span></span>
+    </div>
+    <div class="version-badge" aria-label="Version">v1.0.8</div>
+  </main>
+</body>
+</html>

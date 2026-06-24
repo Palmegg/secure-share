@@ -302,6 +302,7 @@
     els.typeSelect.value = isText ? "text" : "password";
     setHidden(els.passwordWrap, isText);
     setHidden(els.secretTextarea, !isText);
+    els.secretTextarea.classList.remove("is-censored");
     if (!isText) setSecretVisibility(els.secretInput, false);
 
     els.typeOptions.querySelectorAll("[data-type]").forEach((button) => {
@@ -512,7 +513,11 @@
     setFieldError(els.secretField, els.secretError);
   });
 
+  els.secretTextarea.addEventListener("focus", () => {
+    els.secretTextarea.classList.remove("is-censored");
+  });
   els.secretTextarea.addEventListener("input", () => {
+    els.secretTextarea.classList.remove("is-censored");
     updateSizeHint();
     setFieldError(els.secretField, els.secretError);
   });
@@ -563,13 +568,12 @@
       setQrCode(data.code);
       setHidden(els.sendResult, false);
 
-      // The secret is now on the server; clear it from the page so it is no
-      // longer visible regardless of content type.
-      els.secretInput.value = "";
-      els.secretTextarea.value = "";
+      // The content stays in the box but is masked so it is no longer readable,
+      // regardless of type (password -> dots, text -> CSS text-security).
+      // Focusing the field reveals it again for a new entry.
       setSecretVisibility(els.secretInput, false);
+      els.secretTextarea.classList.add("is-censored");
       clearSecretIdleTimer();
-      updateSizeHint();
 
       startCountdown(Number(data.expiresInSeconds || 300));
       startShareStatusWatch(data.code);

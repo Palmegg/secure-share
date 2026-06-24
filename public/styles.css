@@ -300,6 +300,12 @@ textarea:focus {
   font-size: .84rem;
 }
 
+/* Mask textarea content (like a password field) after the code is generated. */
+.is-censored {
+  -webkit-text-security: disc;
+  text-security: disc;
+}
+
 .ttl-options {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

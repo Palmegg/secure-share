@@ -562,7 +562,15 @@
       els.generatedCode.textContent = data.code;
       setQrCode(data.code);
       setHidden(els.sendResult, false);
+
+      // The secret is now on the server; clear it from the page so it is no
+      // longer visible regardless of content type.
+      els.secretInput.value = "";
+      els.secretTextarea.value = "";
       setSecretVisibility(els.secretInput, false);
+      clearSecretIdleTimer();
+      updateSizeHint();
+
       startCountdown(Number(data.expiresInSeconds || 300));
       startShareStatusWatch(data.code);
       setStatus(t("codeReady"));

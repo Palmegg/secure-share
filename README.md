@@ -4,9 +4,10 @@ Secure Share er en lille webapp til midlertidig deling af korte tekster/password
 
 Flowet er simpelt:
 
-- A vælger **Send tekst**, indtaster indhold og får en engangskode.
-- B vælger **Modtag tekst**, indtaster koden og ser indholdet.
+- A vælger **Send**, vælger indholdstype (**adgangskode** eller **tekst/script**), indtaster indhold og får en engangskode.
+- B vælger **Modtag**, indtaster koden og ser indholdet.
 - Indholdet slettes permanent fra serveren ved første succesfulde hentning.
+- B kan kun kopiere indholdet **én gang**: efter kopiering fjernes det straks fra siden, og siden genindlæses.
 
 ## Sikkerhedsmodel
 
@@ -43,7 +44,7 @@ PORT=3000
 HOST=127.0.0.1
 NODE_ENV=production
 SHARE_TTL_SECONDS=300
-MAX_SECRET_BYTES=4096
+MAX_SECRET_CHARS=10000
 APP_SECRET_KEY=<openssl rand -base64 32>
 CODE_PEPPER=<openssl rand -hex 32>
 DATABASE_PATH=./data/secure-share.sqlite
@@ -112,9 +113,12 @@ Forward Port: 80
 ```json
 {
   "secret": "tekst eller password",
+  "kind": "password",
   "ttlSeconds": 300
 }
 ```
+
+`kind` er enten `"password"` eller `"text"` (alt andet behandles som `"text"`). `ttlSeconds` klampes til `60`, `300` eller `600`.
 
 Response:
 
@@ -137,7 +141,8 @@ Success:
 
 ```json
 {
-  "secret": "tekst eller password"
+  "secret": "tekst eller password",
+  "kind": "password"
 }
 ```
 

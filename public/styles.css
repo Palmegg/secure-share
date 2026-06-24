@@ -129,6 +129,14 @@ h2 {
   text-align: center;
 }
 
+.intro {
+  max-width: 40rem;
+  margin: 16px auto 0;
+  color: var(--muted);
+  line-height: 1.6;
+  text-align: center;
+}
+
 .choice-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -231,6 +239,65 @@ select {
 input:focus, select:focus {
   border-color: var(--blue);
   box-shadow: 0 0 0 3px rgba(97, 168, 255, .14);
+}
+
+textarea {
+  width: 100%;
+  min-height: 170px;
+  border: 1px solid rgba(226, 232, 240, .24);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .06);
+  color: var(--text);
+  padding: 12px 13px;
+  outline: none;
+  resize: vertical;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: .92rem;
+  line-height: 1.5;
+}
+
+textarea:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(97, 168, 255, .14);
+}
+
+.type-options {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid rgba(226, 232, 240, .18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .045);
+}
+
+.type-option {
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.type-option:hover,
+.type-option:focus-visible {
+  border-color: rgba(97, 168, 255, .34);
+  background: rgba(97, 168, 255, .1);
+  color: var(--text);
+  outline: none;
+}
+
+.type-option.is-selected {
+  border-color: rgba(78, 240, 138, .62);
+  background: linear-gradient(135deg, rgba(97, 168, 255, .22), rgba(78, 240, 138, .2));
+  color: var(--text);
+  box-shadow: 0 0 0 3px rgba(78, 240, 138, .08) inset;
+}
+
+.copy-note {
+  margin: 0;
+  font-size: .84rem;
 }
 
 .ttl-options {
@@ -428,6 +495,11 @@ input:focus, select:focus {
 
 .status.error {
   color: var(--red);
+}
+
+.status.success {
+  color: var(--green);
+  font-weight: 850;
 }
 
 .used-toast {

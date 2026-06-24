@@ -14,7 +14,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "127.0.0.1";
 const SHARE_TTL_SECONDS = Number(process.env.SHARE_TTL_SECONDS || 300);
-const MAX_SECRET_CHARS = Number(process.env.MAX_SECRET_CHARS || 101);
+const MAX_SECRET_CHARS = Number(process.env.MAX_SECRET_CHARS || 10000);
 const DATABASE_PATH = process.env.DATABASE_PATH || "./data/secure-share.sqlite";
 const APP_SECRET_KEY = process.env.APP_SECRET_KEY || "";
 const CODE_PEPPER = process.env.CODE_PEPPER || "";
@@ -45,6 +45,12 @@ db.exec(`
   `);
 db.exec("CREATE INDEX IF NOT EXISTS idx_shares_expires_at ON shares (expires_at)");
 
+// Migration: add the content-type column to databases created before it existed.
+const shareColumns = db.prepare("PRAGMA table_info(shares)").all();
+if (!shareColumns.some((column) => column.name === "kind")) {
+  db.exec("ALTER TABLE shares ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'");
+}
+
 app.set("trust proxy", 1);
 
 app.use(noStoreMiddleware);
@@ -65,7 +71,7 @@ app.use(helmet({
   referrerPolicy: { policy: "no-referrer" }
 }));
 
-app.use(express.json({ limit: "4kb" }));
+app.use(express.json({ limit: "64kb" }));
 
 const generalLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -141,6 +147,7 @@ app.get("/api/status", generalLimiter, (req, res) => {
 app.post("/api/send", async (req, res) => {
   try {
     const secret = req.body?.secret;
+    const kind = normalizeKind(req.body?.kind);
     const ttlSeconds = normalizeTtl(req.body?.ttlSeconds);
 
     if (typeof secret !== "string" || secret.length === 0) {
@@ -158,9 +165,9 @@ app.post("/api/send", async (req, res) => {
     const expiresAt = now + ttlSeconds;
 
     run(
-      `INSERT INTO shares (code_hash, ciphertext, iv, auth_tag, created_at, expires_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [codeHash, encrypted.ciphertext, encrypted.iv, encrypted.authTag, now, expiresAt]
+      `INSERT INTO shares (code_hash, ciphertext, iv, auth_tag, kind, created_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [codeHash, encrypted.ciphertext, encrypted.iv, encrypted.authTag, kind, now, expiresAt]
     );
 
     res.json({ code, expiresInSeconds: ttlSeconds });
@@ -183,7 +190,7 @@ app.post("/api/receive", receiveLimiter, async (req, res) => {
 
     const receiveTransaction = db.transaction(() => {
       const row = get(
-      "SELECT ciphertext, iv, auth_tag, expires_at FROM shares WHERE code_hash = ?",
+      "SELECT ciphertext, iv, auth_tag, kind, expires_at FROM shares WHERE code_hash = ?",
       [codeHash]
       );
 
@@ -203,7 +210,7 @@ app.post("/api/receive", receiveLimiter, async (req, res) => {
     }
 
     const secret = decryptSecret(row);
-    res.json({ secret });
+    res.json({ secret, kind: row.kind === "password" ? "password" : "text" });
   } catch (error) {
     safeError(error);
     res.status(404).json({ error: GENERIC_ERROR });
@@ -267,6 +274,10 @@ function normalizeTtl(value) {
   const requested = Number(value);
   if ([60, 300, 600].includes(requested)) return requested;
   return SHARE_TTL_SECONDS;
+}
+
+function normalizeKind(value) {
+  return value === "password" ? "password" : "text";
 }
 
 function unixTime() {

@@ -1,20 +1,26 @@
 (() => {
   "use strict";
 
-  const MAX_CHARS = 101;
+  const MAX_CHARS = 10000;
   const SECRET_IDLE_MS = 8000;
   const SHARE_STATUS_POLL_MS = 2500;
   const USED_RELOAD_SECONDS = 5;
+  const COPIED_RELOAD_MS = 1600;
   const translations = {
     en: {
       pageTitle: "One time share",
       choiceTitle: "What do you want to do?",
       choiceText: "Choose one action.",
+      appIntro: "Secure Share lets you hand over a short text or password through a single-use code. The content is encrypted on the server, can only be opened once, and is deleted automatically.",
       send: "Send",
       receive: "Receive",
       back: "Back",
       sendLead: "Enter the content, generate a code, and share the code through another channel.",
       receiveLead: "Enter the one-time code. The content is deleted from the server when it is retrieved.",
+      contentType: "Content type",
+      typeAria: "Choose content type",
+      typePassword: "Password",
+      typeText: "Text",
       content: "Content",
       expiry: "Expiry",
       expiryAria: "Choose expiry time",
@@ -26,14 +32,17 @@
       copyCode: "Copy code",
       qrAlt: "QR code for receiving on mobile",
       scanMobile: "Scan from mobile",
-      qrLead: "Opens the receive page with the code filled in.",
-      openReceiveLink: "Open receive link",
+      qrLead: "The link opens the receive page with the code filled in.",
+      copyReceiveLink: "Copy receive link",
+      linkCopied: "Receive link copied.",
       codeWarningPrefix: "The code can only be used once and expires in",
       oneTimeCode: "One-time code",
       retrieveContent: "Retrieve content",
       contentRetrieved: "Content retrieved",
       deletedWarning: "The content has now been deleted from the server and cannot be retrieved again.",
+      copyOnceNote: "You can copy the content once. It is removed from this page immediately afterwards.",
       copyContent: "Copy content",
+      contentCopiedRemoved: "Copied. The content has been removed — reloading...",
       codeUsed: "Code used",
       reloadPrefix: "The page reloads in",
       seconds: "seconds.",
@@ -57,11 +66,16 @@
       pageTitle: "One time share",
       choiceTitle: "Hvad vil du?",
       choiceText: "Vælg én handling.",
+      appIntro: "Secure Share lader dig overdrage en kort tekst eller adgangskode via en engangskode. Indholdet krypteres på serveren, kan kun åbnes én gang og slettes automatisk.",
       send: "Send",
       receive: "Modtag",
       back: "Tilbage",
       sendLead: "Indtast indholdet, generér en kode, og del koden via en anden kanal.",
       receiveLead: "Indtast engangskoden. Indholdet slettes fra serveren, når det hentes.",
+      contentType: "Indholdstype",
+      typeAria: "Vælg indholdstype",
+      typePassword: "Adgangskode",
+      typeText: "Tekst",
       content: "Indhold",
       expiry: "Udløb",
       expiryAria: "Vælg udløbstid",
@@ -73,14 +87,17 @@
       copyCode: "Kopiér kode",
       qrAlt: "QR-kode til modtagelse på mobil",
       scanMobile: "Scan fra mobil",
-      qrLead: "Åbner modtagersiden med koden udfyldt.",
-      openReceiveLink: "Åbn modtagerlink",
+      qrLead: "Linket åbner modtagersiden med koden udfyldt.",
+      copyReceiveLink: "Kopiér modtagerlink",
+      linkCopied: "Modtagerlink kopieret.",
       codeWarningPrefix: "Koden kan kun bruges én gang og udløber om",
       oneTimeCode: "Engangskode",
       retrieveContent: "Hent indhold",
       contentRetrieved: "Indhold hentet",
       deletedWarning: "Indholdet er nu slettet fra serveren og kan ikke hentes igen.",
+      copyOnceNote: "Du kan kopiere indholdet én gang. Det fjernes fra denne side umiddelbart efter.",
       copyContent: "Kopiér indhold",
+      contentCopiedRemoved: "Kopieret. Indholdet er fjernet — genindlæser...",
       codeUsed: "Koden er brugt",
       reloadPrefix: "Siden genindlæses om",
       seconds: "sekunder.",
@@ -115,28 +132,36 @@
     reloadCountdown: document.querySelector("#reloadCountdown"),
     sendForm: document.querySelector("#sendForm"),
     receiveForm: document.querySelector("#receiveForm"),
+    typeOptions: document.querySelector("#typeOptions"),
+    typeSelect: document.querySelector("#typeSelect"),
     secretField: document.querySelector("#secretField"),
     secretError: document.querySelector("#secretError"),
     secretInput: document.querySelector("#secretInput"),
+    secretTextarea: document.querySelector("#secretTextarea"),
+    passwordWrap: document.querySelector("#passwordWrap"),
     ttlOptions: document.querySelector("#ttlOptions"),
     ttlSelect: document.querySelector("#ttlSelect"),
     sizeHint: document.querySelector("#sizeHint"),
     sendResult: document.querySelector("#sendResult"),
     generatedCode: document.querySelector("#generatedCode"),
     qrImage: document.querySelector("#qrImage"),
-    qrLink: document.querySelector("#qrLink"),
+    qrCopyLink: document.querySelector("#qrCopyLink"),
     countdown: document.querySelector("#countdown"),
     codeField: document.querySelector("#codeField"),
     codeError: document.querySelector("#codeError"),
     codeInput: document.querySelector("#codeInput"),
     receiveResult: document.querySelector("#receiveResult"),
-    receivedSecret: document.querySelector("#receivedSecret")
+    receivedPasswordWrap: document.querySelector("#receivedPasswordWrap"),
+    receivedSecret: document.querySelector("#receivedSecret"),
+    receivedSecretArea: document.querySelector("#receivedSecretArea")
   };
 
   let countdownTimer = null;
   let secretIdleTimer = null;
   let shareStatusTimer = null;
   let reloadTimer = null;
+  let currentReceiveUrl = "";
+  let currentReceiveKind = "password";
   let currentLang = getSavedLanguage();
 
   const t = (key, replacements = {}) => {
@@ -186,9 +211,16 @@
     });
   };
 
-  const setStatus = (message, error = false) => {
+  const setStatus = (message, error = false, success = false) => {
     els.status.textContent = message;
     els.status.classList.toggle("error", error);
+    els.status.classList.toggle("success", success);
+  };
+
+  const setHidden = (node, hidden) => {
+    node.hidden = hidden;
+    node.classList.toggle("force-hidden", hidden);
+    node.style.display = hidden ? "none" : "";
   };
 
   const setFieldError = (field, errorNode, message = "") => {
@@ -208,9 +240,7 @@
   const hideUsedToast = () => {
     window.clearInterval(reloadTimer);
     reloadTimer = null;
-    els.usedToast.hidden = true;
-    els.usedToast.classList.add("force-hidden");
-    els.usedToast.style.display = "none";
+    setHidden(els.usedToast, true);
   };
 
   const stopShareStatusWatch = () => {
@@ -218,19 +248,15 @@
     shareStatusTimer = null;
   };
 
+  // Which send control is currently active (depends on the chosen content type).
+  const sendControl = () => (els.typeSelect.value === "text" ? els.secretTextarea : els.secretInput);
+
   const showView = (id) => {
     Object.entries(views).forEach(([key, node]) => {
-      const active = key === id;
-      node.hidden = !active;
-      node.classList.toggle("force-hidden", !active);
-      node.style.display = active ? "" : "none";
+      setHidden(node, key !== id);
     });
-    els.sendResult.hidden = true;
-    els.sendResult.classList.add("force-hidden");
-    els.sendResult.style.display = "none";
-    els.receiveResult.hidden = true;
-    els.receiveResult.classList.add("force-hidden");
-    els.receiveResult.style.display = "none";
+    setHidden(els.sendResult, true);
+    setHidden(els.receiveResult, true);
     stopShareStatusWatch();
     hideUsedToast();
     clearValidation();
@@ -259,32 +285,83 @@
   };
 
   const updateSizeHint = () => {
-    const chars = Array.from(els.secretInput.value).length;
+    const chars = Array.from(sendControl().value).length;
     els.sizeHint.textContent = `${chars} / ${MAX_CHARS} ${currentLang === "da" ? "tegn" : "characters"}`;
     els.sizeHint.classList.toggle("error", chars > MAX_CHARS);
   };
 
+  const setSendType = (kind) => {
+    const isText = kind === "text";
+    const from = isText ? els.secretInput : els.secretTextarea;
+    const to = isText ? els.secretTextarea : els.secretInput;
+
+    // Carry the typed content across so switching type never loses input.
+    to.value = from.value;
+    from.value = "";
+
+    els.typeSelect.value = isText ? "text" : "password";
+    setHidden(els.passwordWrap, isText);
+    setHidden(els.secretTextarea, !isText);
+    if (!isText) setSecretVisibility(els.secretInput, false);
+
+    els.typeOptions.querySelectorAll("[data-type]").forEach((button) => {
+      button.classList.toggle("is-selected", button.dataset.type === els.typeSelect.value);
+    });
+
+    setFieldError(els.secretField, els.secretError);
+    updateSizeHint();
+  };
+
+  const writeClipboard = async (value) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return;
+    }
+
+    const temp = document.createElement("textarea");
+    temp.value = value;
+    temp.style.position = "fixed";
+    temp.style.opacity = "0";
+    document.body.append(temp);
+    temp.select();
+    const ok = document.execCommand("copy");
+    temp.remove();
+    if (!ok) throw new Error("Copy command failed");
+  };
+
   const copyValue = async (targetId) => {
     const node = document.querySelector(`#${targetId}`);
-    const value = node.tagName === "INPUT" ? node.value : node.textContent.trim();
+    const value = node.tagName === "INPUT" || node.tagName === "TEXTAREA" ? node.value : node.textContent.trim();
 
     try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(value);
-      } else {
-        const temp = document.createElement("textarea");
-        temp.value = value;
-        temp.style.position = "fixed";
-        temp.style.opacity = "0";
-        document.body.append(temp);
-        temp.select();
-        document.execCommand("copy");
-        temp.remove();
-      }
+      await writeClipboard(value);
       setStatus(t("copied"));
     } catch {
       setStatus(t("copyFailed"), true);
     }
+  };
+
+  const receivedValue = () =>
+    (currentReceiveKind === "text" ? els.receivedSecretArea.value : els.receivedSecret.value);
+
+  // One-time copy: on success the content is wiped from the page instantly and the page reloads.
+  const copyContentOnce = async () => {
+    const value = receivedValue();
+
+    try {
+      await writeClipboard(value);
+    } catch {
+      // Keep the content in place so the user can still copy it manually.
+      setStatus(t("copyFailed"), true);
+      return;
+    }
+
+    els.receivedSecret.value = "";
+    els.receivedSecretArea.value = "";
+    setHidden(els.receiveResult, true);
+    setStatus(t("contentCopiedRemoved"), false, true);
+
+    window.setTimeout(() => window.location.reload(), COPIED_RELOAD_MS);
   };
 
   const buildReceiveUrl = (code) => {
@@ -296,8 +373,7 @@
   };
 
   const setQrCode = (code) => {
-    const receiveUrl = buildReceiveUrl(code);
-    els.qrLink.href = receiveUrl;
+    currentReceiveUrl = buildReceiveUrl(code);
     els.qrImage.src = `/api/qr?code=${encodeURIComponent(code)}`;
   };
 
@@ -307,9 +383,7 @@
 
     let remaining = USED_RELOAD_SECONDS;
     els.reloadCountdown.textContent = String(remaining);
-    els.usedToast.hidden = false;
-    els.usedToast.classList.remove("force-hidden");
-    els.usedToast.style.display = "";
+    setHidden(els.usedToast, false);
     setStatus(t("codeUsedStatus"));
 
     window.clearInterval(reloadTimer);
@@ -392,6 +466,27 @@
     button.addEventListener("click", () => copyValue(button.dataset.copy));
   });
 
+  document.querySelectorAll("[data-copy-once]").forEach((button) => {
+    button.addEventListener("click", copyContentOnce);
+  });
+
+  els.qrCopyLink.addEventListener("click", async () => {
+    if (!currentReceiveUrl) return;
+    try {
+      await writeClipboard(currentReceiveUrl);
+      setStatus(t("linkCopied"));
+    } catch {
+      setStatus(t("copyFailed"), true);
+    }
+  });
+
+  els.typeOptions.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-type]");
+    if (!button) return;
+    setSendType(button.dataset.type);
+    sendControl().focus();
+  });
+
   els.ttlOptions.addEventListener("click", (event) => {
     const button = event.target.closest("[data-ttl]");
     if (!button) return;
@@ -417,6 +512,11 @@
     setFieldError(els.secretField, els.secretError);
   });
 
+  els.secretTextarea.addEventListener("input", () => {
+    updateSizeHint();
+    setFieldError(els.secretField, els.secretError);
+  });
+
   els.codeInput.addEventListener("input", () => {
     els.codeInput.value = els.codeInput.value.replace(/\D/g, "").slice(0, 8);
     setFieldError(els.codeField, els.codeError);
@@ -426,28 +526,32 @@
     event.preventDefault();
     clearValidation();
 
-    const chars = Array.from(els.secretInput.value).length;
-    if (!els.secretInput.value) {
+    const control = sendControl();
+    const value = control.value;
+    const chars = Array.from(value).length;
+
+    if (!value) {
       setFieldError(els.secretField, els.secretError, t("secretRequired"));
-      els.secretInput.focus();
+      control.focus();
       return;
     }
 
     if (chars > MAX_CHARS) {
       setFieldError(els.secretField, els.secretError, t("secretTooLarge", { chars, max: MAX_CHARS }));
-      els.secretInput.focus();
+      control.focus();
       return;
     }
 
     setStatus(t("saving"));
-    els.sendResult.hidden = true;
+    setHidden(els.sendResult, true);
 
     try {
       const response = await fetch("/api/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          secret: els.secretInput.value,
+          secret: value,
+          kind: els.typeSelect.value,
           ttlSeconds: Number(els.ttlSelect.value)
         })
       });
@@ -457,9 +561,7 @@
       const data = await response.json();
       els.generatedCode.textContent = data.code;
       setQrCode(data.code);
-      els.sendResult.hidden = false;
-      els.sendResult.classList.remove("force-hidden");
-      els.sendResult.style.display = "";
+      setHidden(els.sendResult, false);
       setSecretVisibility(els.secretInput, false);
       startCountdown(Number(data.expiresInSeconds || 300));
       startShareStatusWatch(data.code);
@@ -480,7 +582,7 @@
     }
 
     setStatus(t("retrieving"));
-    els.receiveResult.hidden = true;
+    setHidden(els.receiveResult, true);
 
     try {
       const response = await fetch("/api/receive", {
@@ -492,11 +594,22 @@
       if (!response.ok) throw new Error(t("receiveFailed"));
 
       const data = await response.json();
-      els.receivedSecret.value = data.secret;
-      setSecretVisibility(els.receivedSecret, false);
-      els.receiveResult.hidden = false;
-      els.receiveResult.classList.remove("force-hidden");
-      els.receiveResult.style.display = "";
+      currentReceiveKind = data.kind === "password" ? "password" : "text";
+
+      if (currentReceiveKind === "text") {
+        els.receivedSecretArea.value = data.secret;
+        els.receivedSecret.value = "";
+        setHidden(els.receivedPasswordWrap, true);
+        setHidden(els.receivedSecretArea, false);
+      } else {
+        els.receivedSecret.value = data.secret;
+        els.receivedSecretArea.value = "";
+        setSecretVisibility(els.receivedSecret, false);
+        setHidden(els.receivedPasswordWrap, false);
+        setHidden(els.receivedSecretArea, true);
+      }
+
+      setHidden(els.receiveResult, false);
       els.codeInput.value = "";
       setStatus(t("receiveSuccess"));
     } catch {
@@ -505,6 +618,7 @@
   });
 
   applyTranslations();
+  setSendType(els.typeSelect.value);
   updateSizeHint();
 
   const initialCode = new URLSearchParams(window.location.search).get("code");

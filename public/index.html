@@ -6,9 +6,9 @@
   <meta name="description" content="Share short text securely with a one-time code. Content can only be retrieved once and expires automatically.">
   <title>One time share</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.0.8">
+  <link rel="stylesheet" href="styles.css?v=1.1.0">
   <style>[hidden], .force-hidden { display: none !important; }</style>
-  <script src="app.js?v=1.0.8" defer></script>
+  <script src="app.js?v=1.1.0" defer></script>
 </head>
 <body>
   <main class="app">
@@ -20,6 +20,7 @@
     <section class="panel choice-modal" id="homeView" role="dialog" aria-labelledby="choiceTitle" aria-describedby="choiceText">
       <p class="eyebrow">One-time secure share</p>
       <h1 id="choiceTitle" data-i18n="choiceTitle">What do you want to do?</h1>
+      <p class="intro" data-i18n="appIntro">Secure Share lets you hand over a short text or password through a single-use code. The content is encrypted on the server, can only be opened once, and is deleted automatically.</p>
       <p class="lead" id="choiceText" data-i18n="choiceText">Choose one action.</p>
       <div class="choice-grid">
         <button class="choice" type="button" data-view="sendView">
@@ -39,14 +40,24 @@
       </div>
 
       <form id="sendForm" novalidate>
+        <div class="field">
+          <span data-i18n="contentType">Content type</span>
+          <div class="type-options" id="typeOptions" role="group" aria-label="Choose content type" data-i18n-aria-label="typeAria">
+            <button class="type-option is-selected" type="button" data-type="password" data-i18n="typePassword">Password</button>
+            <button class="type-option" type="button" data-type="text" data-i18n="typeText">Text</button>
+          </div>
+          <input id="typeSelect" name="kind" type="hidden" value="password">
+        </div>
+
         <label class="field" id="secretField">
           <span data-i18n="content">Content</span>
-          <div class="secret-wrap">
-            <input id="secretInput" name="secret" type="text" maxlength="101" autocomplete="off" spellcheck="false">
+          <div class="secret-wrap" id="passwordWrap">
+            <input id="secretInput" name="secret" type="text" maxlength="10000" autocomplete="off" spellcheck="false">
             <button class="icon-button" type="button" data-toggle="secretInput" aria-label="Show or hide content" data-i18n-aria-label="toggleSecret">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/></svg>
             </button>
           </div>
+          <textarea id="secretTextarea" class="force-hidden" maxlength="10000" rows="8" autocomplete="off" spellcheck="false"></textarea>
           <span class="field-error" id="secretError" hidden>Enter the content you want to share.</span>
         </label>
 
@@ -61,7 +72,7 @@
         </div>
 
         <div class="meta-row">
-          <span id="sizeHint">0 / 101 characters</span>
+          <span id="sizeHint">0 / 10000 characters</span>
         </div>
 
         <button class="primary" type="submit" data-i18n="generateCode">Generate one-time code</button>
@@ -75,8 +86,8 @@
           <img id="qrImage" alt="QR code for receiving on mobile" data-i18n-alt="qrAlt">
           <div>
             <strong data-i18n="scanMobile">Scan from mobile</strong>
-            <p data-i18n="qrLead">Opens the receive page with the code filled in.</p>
-            <a id="qrLink" class="inline-link" href="/" data-i18n="openReceiveLink">Open receive link</a>
+            <p data-i18n="qrLead">The link opens the receive page with the code filled in.</p>
+            <button id="qrCopyLink" class="inline-link" type="button" data-i18n="copyReceiveLink">Copy receive link</button>
           </div>
         </div>
         <p class="warning"><span data-i18n="codeWarningPrefix">The code can only be used once and expires in</span> <span id="countdown">5:00</span>.</p>
@@ -104,14 +115,16 @@
         <p class="warning" data-i18n="deletedWarning">The content has now been deleted from the server and cannot be retrieved again.</p>
         <label class="field">
           <span data-i18n="content">Content</span>
-          <div class="secret-wrap">
+          <div class="secret-wrap" id="receivedPasswordWrap">
             <input id="receivedSecret" type="password" readonly>
             <button class="icon-button" type="button" data-toggle="receivedSecret" aria-label="Show or hide content" data-i18n-aria-label="toggleSecret">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/></svg>
             </button>
           </div>
+          <textarea id="receivedSecretArea" class="force-hidden" rows="8" readonly></textarea>
         </label>
-        <button class="secondary" type="button" data-copy="receivedSecret" data-i18n="copyContent">Copy content</button>
+        <p class="muted copy-note" data-i18n="copyOnceNote">You can copy the content once. It is removed from this page immediately afterwards.</p>
+        <button class="secondary" type="button" data-copy-once="receivedSecret" data-i18n="copyContent">Copy content</button>
       </div>
     </section>
 
@@ -120,7 +133,7 @@
       <strong data-i18n="codeUsed">Code used</strong>
       <span><span data-i18n="reloadPrefix">The page reloads in</span> <span id="reloadCountdown">5</span> <span data-i18n="seconds">seconds.</span></span>
     </div>
-    <div class="version-badge" aria-label="Version">v1.0.8</div>
+    <div class="version-badge" aria-label="Version">v1.1.0</div>
   </main>
 </body>
 </html>

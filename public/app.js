@@ -60,7 +60,35 @@
       codeUsedStatus: "The code has been used. The page will reload shortly.",
       retrieving: "Retrieving...",
       receiveFailed: "The code is invalid or expired.",
-      receiveSuccess: "The content was retrieved and deleted from the server."
+      receiveSuccess: "The content was retrieved and deleted from the server.",
+      liveSession: "Live session",
+      liveSessionHint: "Encrypted real-time chat between two devices.",
+      liveLead: "Start a session to get a PIN, or join an existing one. Messages are end-to-end encrypted between the two devices.",
+      liveStart: "Start",
+      liveJoin: "Join",
+      liveHostLead: "Share this PIN with the other device. They enter it under “Join”.",
+      livePinLabel: "Session PIN",
+      livePinExpiry: "Waiting for the other device. The PIN expires in",
+      liveWaiting: "Waiting for the other device to join…",
+      liveJoinLead: "Enter the 8-digit PIN shown on the other device.",
+      liveJoinButton: "Join session",
+      liveLeave: "Leave",
+      liveConnected: "Connected",
+      liveSafety: "Safety code",
+      liveSafetyNote: "Both devices should show the same safety code. If they differ, stop — the channel is not private.",
+      liveSend: "Send",
+      livePlaceholder: "Message…",
+      liveConnecting: "Connecting…",
+      liveSecuring: "Securing channel…",
+      livePeerLeft: "The other device left. Session ended.",
+      livePeerDisconnected: "The other device dropped. Waiting for reconnect…",
+      livePeerReconnected: "The other device reconnected.",
+      liveReconnecting: "Connection lost. Reconnecting…",
+      liveSessionExpired: "The session expired.",
+      liveJoinFailed: "PIN is invalid, expired, or already in use.",
+      livePinRequired: "Enter the 8-digit PIN.",
+      liveConnectFailed: "Could not connect to the server.",
+      liveEnded: "Session ended."
     },
     da: {
       pageTitle: "One time share",
@@ -115,14 +143,46 @@
       codeUsedStatus: "Koden er brugt. Siden genindlæses om lidt.",
       retrieving: "Henter...",
       receiveFailed: "Koden er ugyldig eller udløbet.",
-      receiveSuccess: "Indholdet blev hentet og slettet fra serveren."
+      receiveSuccess: "Indholdet blev hentet og slettet fra serveren.",
+      liveSession: "Live session",
+      liveSessionHint: "Krypteret realtidschat mellem to enheder.",
+      liveLead: "Start en session for at få en PIN, eller deltag i en eksisterende. Beskeder er end-to-end-krypteret mellem de to enheder.",
+      liveStart: "Start",
+      liveJoin: "Deltag",
+      liveHostLead: "Del denne PIN med den anden enhed. De indtaster den under “Deltag”.",
+      livePinLabel: "Session-PIN",
+      livePinExpiry: "Venter på den anden enhed. PIN-koden udløber om",
+      liveWaiting: "Venter på, at den anden enhed deltager…",
+      liveJoinLead: "Indtast den 8-cifrede PIN, der vises på den anden enhed.",
+      liveJoinButton: "Deltag i session",
+      liveLeave: "Forlad",
+      liveConnected: "Forbundet",
+      liveSafety: "Sikkerhedskode",
+      liveSafetyNote: "Begge enheder bør vise samme sikkerhedskode. Hvis de er forskellige, så stop — kanalen er ikke privat.",
+      liveSend: "Send",
+      livePlaceholder: "Besked…",
+      liveConnecting: "Forbinder…",
+      liveSecuring: "Sikrer kanal…",
+      livePeerLeft: "Den anden enhed forlod sessionen. Session afsluttet.",
+      livePeerDisconnected: "Den anden enhed mistede forbindelsen. Venter på genforbindelse…",
+      livePeerReconnected: "Den anden enhed er forbundet igen.",
+      liveReconnecting: "Forbindelse mistet. Genforbinder…",
+      liveSessionExpired: "Sessionen udløb.",
+      liveJoinFailed: "PIN er ugyldig, udløbet eller allerede i brug.",
+      livePinRequired: "Indtast den 8-cifrede PIN.",
+      liveConnectFailed: "Kunne ikke oprette forbindelse til serveren.",
+      liveEnded: "Session afsluttet."
     }
   };
 
   const views = {
     homeView: document.querySelector("#homeView"),
     sendView: document.querySelector("#sendView"),
-    receiveView: document.querySelector("#receiveView")
+    receiveView: document.querySelector("#receiveView"),
+    liveChoiceView: document.querySelector("#liveChoiceView"),
+    liveHostView: document.querySelector("#liveHostView"),
+    liveJoinView: document.querySelector("#liveJoinView"),
+    liveChatView: document.querySelector("#liveChatView")
   };
 
   const els = {
@@ -153,7 +213,19 @@
     receiveResult: document.querySelector("#receiveResult"),
     receivedPasswordWrap: document.querySelector("#receivedPasswordWrap"),
     receivedSecret: document.querySelector("#receivedSecret"),
-    receivedSecretArea: document.querySelector("#receivedSecretArea")
+    receivedSecretArea: document.querySelector("#receivedSecretArea"),
+    livePin: document.querySelector("#livePin"),
+    livePinCountdown: document.querySelector("#livePinCountdown"),
+    liveHostStatus: document.querySelector("#liveHostStatus"),
+    liveJoinForm: document.querySelector("#liveJoinForm"),
+    livePinField: document.querySelector("#livePinField"),
+    livePinError: document.querySelector("#livePinError"),
+    livePinInput: document.querySelector("#livePinInput"),
+    liveStatus: document.querySelector("#liveStatus"),
+    liveSafetyCode: document.querySelector("#liveSafetyCode"),
+    liveTranscript: document.querySelector("#liveTranscript"),
+    liveMsgForm: document.querySelector("#liveMsgForm"),
+    liveMsgInput: document.querySelector("#liveMsgInput")
   };
 
   let countdownTimer = null;
@@ -202,6 +274,10 @@
 
     document.querySelectorAll("[data-i18n-alt]").forEach((node) => {
       node.setAttribute("alt", t(node.dataset.i18nAlt));
+    });
+
+    document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => {
+      node.setAttribute("placeholder", t(node.dataset.i18nPlaceholder));
     });
 
     els.langButtons.forEach((button) => {
@@ -626,6 +702,368 @@
       setStatus(t("receiveSuccess"));
     } catch {
       setStatus(t("receiveFailed"), true);
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Live session: end-to-end encrypted real-time chat.
+  // ECDH (P-256) over the relay -> HKDF(shared, salt=PIN) -> AES-256-GCM.
+  // The server only ever sees public keys and ciphertext.
+  // ---------------------------------------------------------------------------
+
+  const LIVE_INFO = new TextEncoder().encode("secure-share-live-v1");
+  const lv = {
+    ws: null, role: null, token: null, pin: null,
+    keyPair: null, keysReady: null, myPubRaw: null, sessionKey: null,
+    sendCounter: 0, lastRecvCounter: -1,
+    active: false, closingByUser: false, reconnectAttempts: 0,
+    pinTimer: null, reconnectTimer: null
+  };
+
+  const liveSupported = () => Boolean(window.WebSocket && window.crypto && window.crypto.subtle);
+  const liveWsUrl = () => `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/live-ws`;
+
+  const bytesToB64 = (bytes) => {
+    let s = "";
+    for (let i = 0; i < bytes.length; i += 1) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
+  };
+  const b64ToBytes = (b64) => {
+    const s = atob(b64);
+    const bytes = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i += 1) bytes[i] = s.charCodeAt(i);
+    return bytes;
+  };
+  const compareBytes = (a, b) => {
+    const n = Math.min(a.length, b.length);
+    for (let i = 0; i < n; i += 1) {
+      if (a[i] !== b[i]) return a[i] - b[i];
+    }
+    return a.length - b.length;
+  };
+
+  const liveWsSend = (obj) => {
+    if (lv.ws && lv.ws.readyState === WebSocket.OPEN) lv.ws.send(JSON.stringify(obj));
+  };
+
+  function liveGenKeys() {
+    lv.keysReady = (async () => {
+      lv.keyPair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, false, ["deriveBits"]);
+      lv.myPubRaw = new Uint8Array(await crypto.subtle.exportKey("raw", lv.keyPair.publicKey));
+    })();
+    return lv.keysReady;
+  }
+
+  async function liveDeriveKey(peerRawB64) {
+    const peerRaw = b64ToBytes(peerRawB64);
+    const peerKey = await crypto.subtle.importKey("raw", peerRaw, { name: "ECDH", namedCurve: "P-256" }, false, []);
+    const sharedBits = await crypto.subtle.deriveBits({ name: "ECDH", public: peerKey }, lv.keyPair.privateKey, 256);
+    const hkdfKey = await crypto.subtle.importKey("raw", sharedBits, "HKDF", false, ["deriveKey"]);
+    lv.sessionKey = await crypto.subtle.deriveKey(
+      { name: "HKDF", hash: "SHA-256", salt: new TextEncoder().encode(lv.pin), info: LIVE_INFO },
+      hkdfKey,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"]
+    );
+    await liveComputeSafety(peerRaw);
+  }
+
+  async function liveComputeSafety(peerRaw) {
+    const first = compareBytes(lv.myPubRaw, peerRaw) <= 0 ? lv.myPubRaw : peerRaw;
+    const second = first === lv.myPubRaw ? peerRaw : lv.myPubRaw;
+    const concat = new Uint8Array(first.length + second.length);
+    concat.set(first, 0);
+    concat.set(second, first.length);
+    const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", concat));
+    const hex = [...hash.slice(0, 4)].map((x) => x.toString(16).padStart(2, "0")).join("").toUpperCase();
+    els.liveSafetyCode.textContent = `${hex.slice(0, 4)}-${hex.slice(4, 8)}`;
+  }
+
+  async function liveEncrypt(text) {
+    const nonce = new Uint8Array(12);
+    nonce[0] = lv.role === "host" ? 0 : 1;
+    new DataView(nonce.buffer).setUint32(8, lv.sendCounter, false);
+    lv.sendCounter += 1;
+    const ct = new Uint8Array(await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: nonce }, lv.sessionKey, new TextEncoder().encode(text)
+    ));
+    const frame = new Uint8Array(12 + ct.length);
+    frame.set(nonce, 0);
+    frame.set(ct, 12);
+    return bytesToB64(frame);
+  }
+
+  async function liveDecrypt(b64) {
+    const frame = b64ToBytes(b64);
+    if (frame.length < 13) throw new Error("short frame");
+    const nonce = frame.slice(0, 12);
+    const ct = frame.slice(12);
+    const peerDir = lv.role === "host" ? 1 : 0;
+    if (nonce[0] !== peerDir) throw new Error("bad direction");
+    const counter = new DataView(nonce.buffer).getUint32(8, false);
+    if (counter <= lv.lastRecvCounter) throw new Error("replay/reorder");
+    const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: nonce }, lv.sessionKey, ct);
+    lv.lastRecvCounter = counter;
+    return new TextDecoder().decode(pt);
+  }
+
+  const liveSetStatus = (key, ok) => {
+    els.liveStatus.textContent = t(key);
+    els.liveStatus.classList.toggle("live-status-ok", Boolean(ok));
+    els.liveStatus.classList.toggle("live-status-warn", !ok);
+  };
+
+  const liveAppendMessage = (text, mine) => {
+    const div = document.createElement("div");
+    div.className = `live-msg ${mine ? "live-msg-mine" : "live-msg-peer"}`;
+    div.textContent = text;
+    els.liveTranscript.append(div);
+    els.liveTranscript.scrollTop = els.liveTranscript.scrollHeight;
+  };
+
+  const liveEnterChat = () => {
+    els.liveTranscript.replaceChildren();
+    els.liveSafetyCode.textContent = "····";
+    els.liveMsgInput.value = "";
+    showView("liveChatView");
+  };
+
+  const liveStopPinCountdown = () => {
+    window.clearInterval(lv.pinTimer);
+    lv.pinTimer = null;
+  };
+
+  const liveStartPinCountdown = (seconds) => {
+    liveStopPinCountdown();
+    let remaining = seconds;
+    const render = () => {
+      const mm = Math.floor(remaining / 60);
+      const ss = String(remaining % 60).padStart(2, "0");
+      els.livePinCountdown.textContent = `${mm}:${ss}`;
+      if (remaining <= 0) liveStopPinCountdown();
+      remaining -= 1;
+    };
+    render();
+    lv.pinTimer = window.setInterval(render, 1000);
+  };
+
+  function liveReset() {
+    lv.closingByUser = true;
+    liveStopPinCountdown();
+    window.clearTimeout(lv.reconnectTimer);
+    lv.reconnectTimer = null;
+    if (lv.ws) { try { lv.ws.close(); } catch { /* ignore */ } }
+    lv.ws = null;
+    lv.role = null;
+    lv.token = null;
+    lv.pin = null;
+    lv.keyPair = null;
+    lv.keysReady = null;
+    lv.myPubRaw = null;
+    lv.sessionKey = null;
+    lv.sendCounter = 0;
+    lv.lastRecvCounter = -1;
+    lv.active = false;
+    lv.reconnectAttempts = 0;
+    els.liveTranscript.replaceChildren();
+    els.liveMsgInput.value = "";
+    els.liveSafetyCode.textContent = "····";
+  }
+
+  function liveEnd(key, isError) {
+    liveReset();
+    showView("liveChoiceView");
+    setStatus(t(key), Boolean(isError));
+  }
+
+  function liveConnect(onOpen) {
+    let ws;
+    try {
+      ws = new WebSocket(liveWsUrl());
+    } catch {
+      liveEnd("liveConnectFailed", true);
+      return;
+    }
+    lv.ws = ws;
+    ws.onopen = () => { lv.reconnectAttempts = 0; if (onOpen) onOpen(); };
+    ws.onmessage = (ev) => liveOnServer(ev.data);
+    ws.onclose = () => liveOnClose();
+    ws.onerror = () => {};
+  }
+
+  function liveOnClose() {
+    if (lv.closingByUser) return;
+    if (!lv.active) {
+      liveReset();
+      showView("liveChoiceView");
+      setStatus(t("liveConnectFailed"), true);
+      return;
+    }
+    if (lv.reconnectAttempts >= 5) {
+      liveEnd("liveReconnecting", true);
+      return;
+    }
+    lv.reconnectAttempts += 1;
+    liveSetStatus("liveReconnecting", false);
+    lv.reconnectTimer = window.setTimeout(() => {
+      liveConnect(() => liveWsSend({ t: "resume", token: lv.token }));
+    }, 1000 * lv.reconnectAttempts);
+  }
+
+  async function liveOnServer(raw) {
+    let m;
+    try { m = JSON.parse(raw); } catch { return; }
+    if (!m || typeof m.t !== "string") return;
+
+    switch (m.t) {
+      case "created":
+        lv.role = "host";
+        lv.token = m.token;
+        lv.pin = m.pin;
+        els.livePin.textContent = m.pin;
+        liveStartPinCountdown(120);
+        return;
+      case "joined":
+        lv.role = "guest";
+        lv.token = m.token;
+        liveEnterChat();
+        liveSetStatus("liveSecuring", false);
+        await liveGenKeys();
+        liveWsSend({ t: "signal", data: bytesToB64(lv.myPubRaw) });
+        return;
+      case "peer-joined":
+        liveStopPinCountdown();
+        liveEnterChat();
+        liveSetStatus("liveSecuring", false);
+        await liveGenKeys();
+        liveWsSend({ t: "signal", data: bytesToB64(lv.myPubRaw) });
+        return;
+      case "signal":
+        if (lv.sessionKey || !lv.keysReady) return;
+        try {
+          await lv.keysReady;
+          await liveDeriveKey(m.data);
+          lv.active = true;
+          liveSetStatus("liveConnected", true);
+          els.liveMsgInput.focus();
+        } catch {
+          liveEnd("liveConnectFailed", true);
+        }
+        return;
+      case "msg":
+        if (!lv.sessionKey) return;
+        try {
+          liveAppendMessage(await liveDecrypt(m.data), false);
+        } catch { /* drop bad/replayed frame */ }
+        return;
+      case "peer-disconnected":
+        liveSetStatus("livePeerDisconnected", false);
+        return;
+      case "peer-reconnected":
+        liveSetStatus("liveConnected", true);
+        return;
+      case "resumed":
+        liveSetStatus("liveConnected", true);
+        return;
+      case "peer-left":
+        liveEnd("livePeerLeft");
+        return;
+      case "session-expired":
+        liveEnd("liveSessionExpired");
+        return;
+      case "join-failed":
+        liveReset();
+        showView("liveJoinView");
+        setStatus(t("liveJoinFailed"), true);
+        els.livePinInput.value = "";
+        els.livePinInput.focus();
+        return;
+      case "resume-failed":
+      case "error":
+        liveEnd("liveConnectFailed", true);
+        return;
+      default:
+        return;
+    }
+  }
+
+  function liveStartHost() {
+    if (!liveSupported()) { liveEnd("liveConnectFailed", true); return; }
+    liveReset();
+    lv.closingByUser = false;
+    els.livePin.textContent = "········";
+    els.livePinCountdown.textContent = "2:00";
+    showView("liveHostView");
+    liveConnect(() => liveWsSend({ t: "create" }));
+  }
+
+  function liveLeaveByUser() {
+    if (lv.ws && lv.ws.readyState === WebSocket.OPEN) liveWsSend({ t: "leave" });
+    liveReset();
+    showView("liveChoiceView");
+  }
+
+  document.querySelectorAll("[data-live]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = button.dataset.live;
+      if (action === "start") {
+        liveStartHost();
+      } else if (action === "join") {
+        showView("liveJoinView");
+        els.livePinInput.value = "";
+        els.livePinInput.focus();
+      } else if (action === "leave") {
+        liveLeaveByUser();
+      }
+    });
+  });
+
+  els.livePinInput.addEventListener("input", () => {
+    els.livePinInput.value = els.livePinInput.value.replace(/\D/g, "").slice(0, 8);
+    setFieldError(els.livePinField, els.livePinError);
+  });
+
+  els.liveJoinForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    setFieldError(els.livePinField, els.livePinError);
+    if (!liveSupported()) { setStatus(t("liveConnectFailed"), true); return; }
+
+    const pin = els.livePinInput.value.trim();
+    if (!/^\d{8}$/.test(pin)) {
+      setFieldError(els.livePinField, els.livePinError, t("livePinRequired"));
+      els.livePinInput.focus();
+      return;
+    }
+
+    liveReset();
+    lv.closingByUser = false;
+    lv.pin = pin;
+    setStatus(t("liveConnecting"));
+    liveConnect(() => liveWsSend({ t: "join", pin }));
+  });
+
+  els.liveMsgInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      els.liveMsgForm.requestSubmit();
+    }
+  });
+
+  els.liveMsgForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const text = els.liveMsgInput.value;
+    if (!text || !lv.sessionKey) return;
+    if (Array.from(text).length > MAX_CHARS) return;
+
+    try {
+      const frame = await liveEncrypt(text);
+      liveWsSend({ t: "msg", data: frame });
+      liveAppendMessage(text, true);
+      els.liveMsgInput.value = "";
+      els.liveMsgInput.focus();
+    } catch {
+      setStatus(t("liveConnectFailed"), true);
     }
   });
 

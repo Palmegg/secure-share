@@ -6,9 +6,9 @@
   <meta name="description" content="Share short text securely with a one-time code. Content can only be retrieved once and expires automatically.">
   <title>One time share</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.1.2">
+  <link rel="stylesheet" href="styles.css?v=1.2.0">
   <style>[hidden], .force-hidden { display: none !important; }</style>
-  <script src="app.js?v=1.1.2" defer></script>
+  <script src="app.js?v=1.2.0" defer></script>
 </head>
 <body>
   <main class="app">
@@ -28,6 +28,10 @@
         </button>
         <button class="choice" type="button" data-view="receiveView">
           <span data-i18n="receive">Receive</span>
+        </button>
+        <button class="choice choice-wide" type="button" data-view="liveChoiceView">
+          <span data-i18n="liveSession">Live session</span>
+          <small data-i18n="liveSessionHint">Encrypted real-time chat between two devices.</small>
         </button>
       </div>
     </section>
@@ -128,12 +132,74 @@
       </div>
     </section>
 
+    <section class="panel view modal-card" id="liveChoiceView" hidden>
+      <div class="modal-head">
+        <button class="back" type="button" data-view="homeView" data-i18n="back">Back</button>
+        <h2 data-i18n="liveSession">Live session</h2>
+        <p class="muted" data-i18n="liveLead">Start a session to get a PIN, or join an existing one. Messages are end-to-end encrypted between the two devices.</p>
+      </div>
+      <div class="choice-grid">
+        <button class="choice" type="button" data-live="start">
+          <span data-i18n="liveStart">Start</span>
+        </button>
+        <button class="choice" type="button" data-live="join">
+          <span data-i18n="liveJoin">Join</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="panel view modal-card" id="liveHostView" hidden>
+      <div class="modal-head">
+        <button class="back" type="button" data-live="leave" data-i18n="back">Back</button>
+        <h2 data-i18n="liveStart">Start</h2>
+        <p class="muted" data-i18n="liveHostLead">Share this PIN with the other device. They enter it under “Join”.</p>
+      </div>
+      <div class="result">
+        <p data-i18n="livePinLabel">Session PIN:</p>
+        <div class="code" id="livePin">········</div>
+        <p class="warning"><span data-i18n="livePinExpiry">Waiting for the other device. The PIN expires in</span> <span id="livePinCountdown">2:00</span>.</p>
+        <p class="muted" id="liveHostStatus" data-i18n="liveWaiting">Waiting for the other device to join…</p>
+      </div>
+    </section>
+
+    <section class="panel view modal-card" id="liveJoinView" hidden>
+      <div class="modal-head">
+        <button class="back" type="button" data-live="leave" data-i18n="back">Back</button>
+        <h2 data-i18n="liveJoin">Join</h2>
+        <p class="muted" data-i18n="liveJoinLead">Enter the 8-digit PIN shown on the other device.</p>
+      </div>
+      <form id="liveJoinForm" novalidate>
+        <label class="field" id="livePinField">
+          <span data-i18n="livePinLabel">Session PIN</span>
+          <input id="livePinInput" inputmode="numeric" pattern="[0-9]{8}" maxlength="8" autocomplete="off">
+          <span class="field-error" id="livePinError" hidden>Enter the 8-digit PIN.</span>
+        </label>
+        <button class="primary" type="submit" data-i18n="liveJoinButton">Join session</button>
+      </form>
+    </section>
+
+    <section class="panel view modal-card live-chat" id="liveChatView" hidden>
+      <div class="modal-head live-chat-head">
+        <button class="back" type="button" data-live="leave" data-i18n="liveLeave">Leave</button>
+        <div class="live-chat-meta">
+          <span class="live-status" id="liveStatus" data-i18n="liveConnected">Connected</span>
+          <span class="live-safety" title="Safety code"><span data-i18n="liveSafety">Safety code</span>: <strong id="liveSafetyCode">····</strong></span>
+        </div>
+      </div>
+      <p class="muted live-safety-note" data-i18n="liveSafetyNote">Both devices should show the same safety code. If they differ, stop — the channel is not private.</p>
+      <div class="live-transcript" id="liveTranscript" aria-live="polite"></div>
+      <form id="liveMsgForm" class="live-compose" novalidate>
+        <textarea id="liveMsgInput" rows="2" maxlength="10000" placeholder="Message…" data-i18n-placeholder="livePlaceholder" autocomplete="off"></textarea>
+        <button class="primary" type="submit" data-i18n="liveSend">Send</button>
+      </form>
+    </section>
+
     <p class="status" id="status" role="status" aria-live="polite"></p>
     <div class="used-toast" id="usedToast" role="alert" aria-live="assertive" hidden>
       <strong data-i18n="codeUsed">Code used</strong>
       <span><span data-i18n="reloadPrefix">The page reloads in</span> <span id="reloadCountdown">5</span> <span data-i18n="seconds">seconds.</span></span>
     </div>
-    <div class="version-badge" aria-label="Version">v1.1.2</div>
+    <div class="version-badge" aria-label="Version">v1.2.0</div>
   </main>
 </body>
 </html>

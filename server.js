@@ -8,6 +8,7 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const Database = require("better-sqlite3");
 const QRCode = require("qrcode");
+const { WebSocketServer } = require("ws");
 
 const app = express();
 
@@ -234,11 +235,299 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`secure-share listening on ${HOST}:${PORT}`);
 });
 
+// ---------------------------------------------------------------------------
+// Live session: end-to-end encrypted real-time relay.
+//
+// The server is a blind relay. It pairs two sockets by an 8-digit PIN and
+// forwards opaque "signal" (ECDH public keys) and "msg" (ciphertext) frames
+// between them. It never sees plaintext or key material and stores nothing on
+// disk — all session state is in-memory and dies with the process.
+// ---------------------------------------------------------------------------
+
+const LIVE_WS_PATH = "/live-ws";
+const LIVE_PENDING_TTL_MS = 2 * 60 * 1000; // join window before the PIN expires
+const LIVE_IDLE_TTL_MS = 15 * 60 * 1000; // close after this long with no traffic
+const LIVE_RECONNECT_GRACE_MS = 30 * 1000; // same-tab reconnect window
+const LIVE_MAX_FRAME_BYTES = 96 * 1024; // raw ws frame cap (blind DoS guard)
+const LIVE_MAX_SESSIONS = 500; // backstop against memory exhaustion
+const LIVE_MSG_WINDOW_MS = 10 * 1000;
+const LIVE_MSG_LIMIT = 30; // messages per window per connection
+const LIVE_JOIN_WINDOW_MS = 60 * 1000;
+const LIVE_JOIN_LIMIT_PER_IP = 5; // join attempts / minute / IP
+const LIVE_GLOBAL_FAILED_JOIN_LIMIT = 100; // failed joins / minute, all IPs
+
+const liveSessions = new Map(); // pin -> session
+const liveTokens = new Map(); // reconnect token -> { pin, role }
+const joinAttemptsByIp = new Map(); // ip -> [timestamps]
+let globalFailedJoins = []; // timestamps of failed joins across all IPs
+
+const wss = new WebSocketServer({ server, path: LIVE_WS_PATH, maxPayload: LIVE_MAX_FRAME_BYTES });
+
+wss.on("connection", (ws, req) => {
+  ws.isAlive = true;
+  ws.live = { pin: null, role: null, msgTimes: [] };
+  ws.on("pong", () => { ws.isAlive = true; });
+  ws.on("message", (raw) => handleLiveMessage(ws, clientIp(req), raw));
+  ws.on("close", () => handleLiveClose(ws));
+  ws.on("error", () => {});
+});
+
+const liveHeartbeat = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) return ws.terminate();
+    ws.isAlive = false;
+    try { ws.ping(); } catch { /* ignore */ }
+  });
+  pruneJoinAttempts();
+}, 30 * 1000);
+liveHeartbeat.unref();
+
+function handleLiveMessage(ws, ip, raw) {
+  let msg;
+  try {
+    msg = JSON.parse(raw.toString());
+  } catch {
+    return;
+  }
+  if (!msg || typeof msg.t !== "string") return;
+
+  switch (msg.t) {
+    case "create": return liveCreate(ws);
+    case "join": return liveJoin(ws, ip, msg);
+    case "signal": return liveRelay(ws, "signal", msg);
+    case "msg": return liveRelay(ws, "msg", msg);
+    case "resume": return liveResume(ws, msg);
+    case "leave": return liveLeave(ws);
+    default: return;
+  }
+}
+
+function liveCreate(ws) {
+  if (ws.live.pin) return; // already in a session on this socket
+  if (liveSessions.size >= LIVE_MAX_SESSIONS) {
+    return liveSend(ws, { t: "error", reason: "busy" });
+  }
+
+  const pin = mintLivePin();
+  if (!pin) return liveSend(ws, { t: "error", reason: "busy" });
+
+  const token = crypto.randomBytes(16).toString("hex");
+  const session = {
+    pin,
+    state: "pending",
+    host: { ws, token },
+    guest: null,
+    pendingTimer: null,
+    idleTimer: null,
+    graceTimers: { host: null, guest: null }
+  };
+
+  liveSessions.set(pin, session);
+  liveTokens.set(token, { pin, role: "host" });
+  ws.live = { pin, role: "host", msgTimes: [] };
+
+  session.pendingTimer = setTimeout(() => {
+    liveSend(session.host?.ws, { t: "session-expired", reason: "pending-timeout" });
+    endLiveSession(session, "pending-timeout");
+  }, LIVE_PENDING_TTL_MS);
+  session.pendingTimer.unref();
+
+  liveSend(ws, { t: "created", pin, token, role: "host" });
+}
+
+function liveJoin(ws, ip, msg) {
+  if (ws.live.pin) return; // already paired on this socket
+  const pin = String(msg.pin || "").trim();
+
+  if (globalJoinLocked() || !allowJoinFromIp(ip)) {
+    recordFailedJoin();
+    return liveSend(ws, { t: "join-failed" });
+  }
+  if (!/^\d{8}$/.test(pin)) {
+    recordFailedJoin();
+    return liveSend(ws, { t: "join-failed" });
+  }
+
+  const session = liveSessions.get(pin);
+  if (!session || session.state !== "pending" || session.guest) {
+    recordFailedJoin();
+    return liveSend(ws, { t: "join-failed" });
+  }
+
+  const token = crypto.randomBytes(16).toString("hex");
+  session.guest = { ws, token };
+  session.state = "active";
+  liveTokens.set(token, { pin, role: "guest" });
+  ws.live = { pin, role: "guest", msgTimes: [] };
+
+  clearTimeout(session.pendingTimer);
+  session.pendingTimer = null;
+  resetIdleTimer(session);
+
+  liveSend(ws, { t: "joined", token, role: "guest" });
+  liveSend(session.host.ws, { t: "peer-joined" });
+}
+
+function liveRelay(ws, kind, msg) {
+  const session = liveSessions.get(ws.live.pin);
+  if (!session || session.state !== "active") return;
+  if (typeof msg.data !== "string" || msg.data.length > LIVE_MAX_FRAME_BYTES) return;
+
+  if (kind === "msg") {
+    if (!withinMsgRate(ws)) return;
+    resetIdleTimer(session);
+  }
+
+  const peer = peerOf(session, ws.live.role);
+  liveSend(peer?.ws, { t: kind, data: msg.data });
+}
+
+function liveResume(ws, msg) {
+  const token = String(msg.token || "");
+  const entry = liveTokens.get(token);
+  if (!entry) return liveSend(ws, { t: "resume-failed" });
+
+  const session = liveSessions.get(entry.pin);
+  if (!session || session.state !== "active") return liveSend(ws, { t: "resume-failed" });
+
+  const slot = entry.role === "host" ? session.host : session.guest;
+  if (!slot) return liveSend(ws, { t: "resume-failed" });
+
+  clearTimeout(session.graceTimers[entry.role]);
+  session.graceTimers[entry.role] = null;
+  slot.ws = ws;
+  ws.live = { pin: entry.pin, role: entry.role, msgTimes: [] };
+
+  liveSend(ws, { t: "resumed", role: entry.role });
+  liveSend(peerOf(session, entry.role)?.ws, { t: "peer-reconnected" });
+}
+
+function liveLeave(ws) {
+  const session = liveSessions.get(ws.live.pin);
+  if (!session) return;
+  liveSend(peerOf(session, ws.live.role)?.ws, { t: "peer-left" });
+  endLiveSession(session, "left");
+}
+
+function handleLiveClose(ws) {
+  const session = liveSessions.get(ws.live.pin);
+  if (!session) return;
+  const role = ws.live.role;
+
+  if (session.state === "pending") {
+    // Host vanished before anyone joined — nothing to preserve.
+    endLiveSession(session, "host-gone");
+    return;
+  }
+
+  const slot = role === "host" ? session.host : session.guest;
+  if (!slot || slot.ws !== ws) return; // a stale socket that was already replaced
+
+  // Active session: give the same tab a short window to reconnect.
+  liveSend(peerOf(session, role)?.ws, { t: "peer-disconnected" });
+  clearTimeout(session.graceTimers[role]);
+  session.graceTimers[role] = setTimeout(() => {
+    liveSend(peerOf(session, role)?.ws, { t: "peer-left" });
+    endLiveSession(session, "grace-timeout");
+  }, LIVE_RECONNECT_GRACE_MS);
+  session.graceTimers[role].unref();
+}
+
+function endLiveSession(session, _reason) {
+  clearTimeout(session.pendingTimer);
+  clearTimeout(session.idleTimer);
+  clearTimeout(session.graceTimers.host);
+  clearTimeout(session.graceTimers.guest);
+  liveSessions.delete(session.pin);
+
+  for (const slot of [session.host, session.guest]) {
+    if (!slot) continue;
+    liveTokens.delete(slot.token);
+    if (slot.ws && slot.ws.live) slot.ws.live = { pin: null, role: null, msgTimes: [] };
+  }
+}
+
+function resetIdleTimer(session) {
+  clearTimeout(session.idleTimer);
+  session.idleTimer = setTimeout(() => {
+    for (const slot of [session.host, session.guest]) {
+      liveSend(slot?.ws, { t: "session-expired", reason: "idle" });
+    }
+    endLiveSession(session, "idle");
+  }, LIVE_IDLE_TTL_MS);
+  session.idleTimer.unref();
+}
+
+function peerOf(session, role) {
+  return role === "host" ? session.guest : session.host;
+}
+
+function liveSend(ws, obj) {
+  if (ws && ws.readyState === ws.OPEN) {
+    try { ws.send(JSON.stringify(obj)); } catch { /* ignore */ }
+  }
+}
+
+function mintLivePin() {
+  for (let i = 0; i < 12; i += 1) {
+    const pin = String(crypto.randomInt(10000000, 100000000));
+    if (!liveSessions.has(pin)) return pin;
+  }
+  return null;
+}
+
+function withinMsgRate(ws) {
+  const now = Date.now();
+  ws.live.msgTimes = ws.live.msgTimes.filter((t) => now - t < LIVE_MSG_WINDOW_MS);
+  ws.live.msgTimes.push(now);
+  return ws.live.msgTimes.length <= LIVE_MSG_LIMIT;
+}
+
+function allowJoinFromIp(ip) {
+  const now = Date.now();
+  const arr = (joinAttemptsByIp.get(ip) || []).filter((t) => now - t < LIVE_JOIN_WINDOW_MS);
+  arr.push(now);
+  joinAttemptsByIp.set(ip, arr);
+  return arr.length <= LIVE_JOIN_LIMIT_PER_IP;
+}
+
+function recordFailedJoin() {
+  const now = Date.now();
+  globalFailedJoins = globalFailedJoins.filter((t) => now - t < LIVE_JOIN_WINDOW_MS);
+  globalFailedJoins.push(now);
+}
+
+function globalJoinLocked() {
+  const now = Date.now();
+  globalFailedJoins = globalFailedJoins.filter((t) => now - t < LIVE_JOIN_WINDOW_MS);
+  return globalFailedJoins.length > LIVE_GLOBAL_FAILED_JOIN_LIMIT;
+}
+
+function pruneJoinAttempts() {
+  const now = Date.now();
+  for (const [ip, arr] of joinAttemptsByIp) {
+    const kept = arr.filter((t) => now - t < LIVE_JOIN_WINDOW_MS);
+    if (kept.length) joinAttemptsByIp.set(ip, kept);
+    else joinAttemptsByIp.delete(ip);
+  }
+}
+
+function clientIp(req) {
+  const xff = req.headers["x-forwarded-for"];
+  if (xff) return String(xff).split(",")[0].trim();
+  return req.socket.remoteAddress || "unknown";
+}
+
 process.on("SIGTERM", shutdown);
 process.on("SIGINT", shutdown);
 
 function shutdown() {
   clearInterval(cleanupTimer);
+  clearInterval(liveHeartbeat);
+  wss.close();
+  for (const ws of wss.clients) {
+    try { ws.terminate(); } catch { /* ignore */ }
+  }
   server.close(() => {
     db.close();
     process.exit(0);

@@ -55,7 +55,7 @@ a {
 
 /* The live chat gets more room to show conversation history. */
 .app.app-wide {
-  width: min(860px, 100%);
+  width: min(1040px, 100%);
 }
 
 .lang-switch {

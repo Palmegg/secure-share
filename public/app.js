@@ -827,12 +827,13 @@
   const EYE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/></svg>';
 
   // Decide whether a message should render as a code block, and strip ``` fences.
+  // Any multi-line message (scripts, logs, structured output) becomes a code
+  // block; a single line can be forced with ``` fences.
   const liveClassify = (raw) => {
     const trimmed = raw.trim();
     const fence = /^```[^\n]*\n([\s\S]*?)\n?```$/.exec(trimmed);
     if (fence) return { code: true, text: fence[1] };
-    const codey = /[{};]|=>|^\s{2,}\S|\b(function|const|let|var|def|class|import|export|return|public|void|sudo|npm|git|curl|docker|systemctl|#!\/)\b/m.test(raw);
-    if (raw.includes("\n") && codey) return { code: true, text: raw };
+    if (raw.includes("\n")) return { code: true, text: raw };
     return { code: false, text: raw };
   };
 

@@ -89,7 +89,9 @@
       livePinRequired: "Enter the 8-digit PIN.",
       liveConnectFailed: "Could not connect to the server.",
       liveEnded: "Session ended.",
-      livePeerTyping: "The other device is typing…"
+      livePeerTyping: "The other device is typing…",
+      liveCopy: "Copy",
+      liveCopied: "Copied!"
     },
     da: {
       pageTitle: "One time share",
@@ -173,7 +175,9 @@
       livePinRequired: "Indtast den 8-cifrede PIN.",
       liveConnectFailed: "Kunne ikke oprette forbindelse til serveren.",
       liveEnded: "Session afsluttet.",
-      livePeerTyping: "Den anden enhed skriver…"
+      livePeerTyping: "Den anden enhed skriver…",
+      liveCopy: "Kopiér",
+      liveCopied: "Kopieret!"
     }
   };
 
@@ -822,13 +826,62 @@
 
   const EYE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/></svg>';
 
-  const liveAppendMessage = (text, mine) => {
-    const div = document.createElement("div");
-    div.className = `live-msg ${mine ? "live-msg-mine" : "live-msg-peer"}`;
+  // Decide whether a message should render as a code block, and strip ``` fences.
+  const liveClassify = (raw) => {
+    const trimmed = raw.trim();
+    const fence = /^```[^\n]*\n([\s\S]*?)\n?```$/.exec(trimmed);
+    if (fence) return { code: true, text: fence[1] };
+    const codey = /[{};]|=>|^\s{2,}\S|\b(function|const|let|var|def|class|import|export|return|public|void|sudo|npm|git|curl|docker|systemctl|#!\/)\b/m.test(raw);
+    if (raw.includes("\n") && codey) return { code: true, text: raw };
+    return { code: false, text: raw };
+  };
 
-    const span = document.createElement("span");
-    span.className = "live-msg-text";
-    span.textContent = text; // textContent: never interpret message content as HTML
+  // Sent payloads carry the text, sender timestamp, and code flag (all encrypted).
+  const liveParsePayload = (rawJson) => {
+    try {
+      const o = JSON.parse(rawJson);
+      if (o && typeof o.x === "string") {
+        return { text: o.x, ts: Number(o.ts) || Date.now(), code: Boolean(o.c) };
+      }
+    } catch { /* fall through to plain text */ }
+    const cls = liveClassify(rawJson);
+    return { text: cls.text, ts: Date.now(), code: cls.code };
+  };
+
+  const liveFormatTime = (ts) => {
+    const d = new Date(ts);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+
+  const liveAppendMessage = (data, mine) => {
+    const div = document.createElement("div");
+    div.className = `live-msg ${mine ? "live-msg-mine" : "live-msg-peer"}${data.code ? " live-msg-code" : ""}`;
+
+    const body = document.createElement("div");
+    body.className = "live-msg-body";
+
+    if (data.code) {
+      const pre = document.createElement("pre");
+      pre.className = "live-code";
+      const codeEl = document.createElement("code");
+      codeEl.className = "live-msg-text";
+      codeEl.textContent = data.text; // textContent: never interpret content as HTML
+      pre.append(codeEl);
+      body.append(pre);
+    } else {
+      const span = document.createElement("span");
+      span.className = "live-msg-text";
+      span.textContent = data.text;
+      body.append(span);
+    }
+
+    const time = document.createElement("time");
+    time.className = "live-msg-time";
+    time.textContent = liveFormatTime(data.ts);
+    body.append(time);
+
+    const actions = document.createElement("div");
+    actions.className = "live-msg-actions";
 
     const eye = document.createElement("button");
     eye.type = "button";
@@ -836,8 +889,30 @@
     eye.setAttribute("aria-label", t("toggleSecret"));
     eye.innerHTML = EYE_SVG; // static markup, no user data
     eye.addEventListener("click", () => div.classList.toggle("revealed"));
+    actions.append(eye);
 
-    div.append(span, eye);
+    if (data.code) {
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "live-msg-copy";
+      copy.textContent = t("liveCopy");
+      copy.addEventListener("click", async () => {
+        try {
+          await writeClipboard(data.text);
+          copy.textContent = t("liveCopied");
+          copy.classList.add("is-copied");
+          window.setTimeout(() => {
+            copy.textContent = t("liveCopy");
+            copy.classList.remove("is-copied");
+          }, 1500);
+        } catch {
+          setStatus(t("copyFailed"), true);
+        }
+      });
+      actions.append(copy);
+    }
+
+    div.append(body, actions);
     els.liveTranscript.append(div);
     els.liveTranscript.scrollTop = els.liveTranscript.scrollHeight;
   };
@@ -1000,7 +1075,7 @@
         if (!lv.sessionKey) return;
         liveShowTyping(false);
         try {
-          liveAppendMessage(await liveDecrypt(m.data), false);
+          liveAppendMessage(liveParsePayload(await liveDecrypt(m.data)), false);
         } catch { /* drop bad/replayed frame */ }
         return;
       case "typing":
@@ -1116,9 +1191,11 @@
     liveSendTyping(false);
 
     try {
-      const frame = await liveEncrypt(text);
+      const cls = liveClassify(text);
+      const ts = Date.now();
+      const frame = await liveEncrypt(JSON.stringify({ x: cls.text, ts, c: cls.code }));
       liveWsSend({ t: "msg", data: frame });
-      liveAppendMessage(text, true);
+      liveAppendMessage({ text: cls.text, ts, code: cls.code }, true);
       els.liveMsgInput.value = "";
       els.liveMsgInput.focus();
     } catch {

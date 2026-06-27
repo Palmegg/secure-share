@@ -642,8 +642,15 @@ textarea:focus {
   font-size: .94rem;
 }
 
-.live-msg-text {
+.live-msg-body {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.live-msg-text {
   min-width: 0;
   line-height: 1.4;
   white-space: pre-wrap;
@@ -656,6 +663,67 @@ textarea:focus {
 .live-msg.revealed .live-msg-text {
   filter: none;
   user-select: text;
+}
+
+.live-msg-time {
+  align-self: flex-end;
+  font-size: .68rem;
+  color: var(--muted);
+  opacity: .85;
+  font-variant-numeric: tabular-nums;
+}
+
+.live-msg-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.live-msg-code {
+  max-width: 100%;
+  width: 100%;
+}
+
+.live-code {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, .4);
+  border: 1px solid var(--line);
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.live-code .live-msg-text {
+  display: block;
+  white-space: pre;
+  overflow-wrap: normal;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: .84rem;
+  line-height: 1.5;
+}
+
+.live-msg-copy {
+  padding: 4px 9px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, .14);
+  color: var(--text);
+  font-size: .72rem;
+  font-weight: 850;
+  white-space: nowrap;
+  opacity: .85;
+}
+
+.live-msg-copy:hover,
+.live-msg-copy:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+
+.live-msg-copy.is-copied {
+  background: rgba(78, 240, 138, .25);
+  color: var(--green);
 }
 
 .live-msg-eye {

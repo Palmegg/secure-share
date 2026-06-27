@@ -296,6 +296,7 @@ function handleLiveMessage(ws, ip, raw) {
     case "join": return liveJoin(ws, ip, msg);
     case "signal": return liveRelay(ws, "signal", msg);
     case "msg": return liveRelay(ws, "msg", msg);
+    case "typing": return liveTyping(ws, msg);
     case "resume": return liveResume(ws, msg);
     case "leave": return liveLeave(ws);
     default: return;
@@ -380,6 +381,13 @@ function liveRelay(ws, kind, msg) {
 
   const peer = peerOf(session, ws.live.role);
   liveSend(peer?.ws, { t: kind, data: msg.data });
+}
+
+function liveTyping(ws, msg) {
+  // Tiny presence flag (carries no content); relayed to the peer only.
+  const session = liveSessions.get(ws.live.pin);
+  if (!session || session.state !== "active") return;
+  liveSend(peerOf(session, ws.live.role)?.ws, { t: "typing", on: Boolean(msg.on) });
 }
 
 function liveResume(ws, msg) {

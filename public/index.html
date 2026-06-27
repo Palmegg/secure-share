@@ -6,9 +6,9 @@
   <meta name="description" content="Share short text securely with a one-time code. Content can only be retrieved once and expires automatically.">
   <title>One time share</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=1.2.0">
+  <link rel="stylesheet" href="styles.css?v=1.2.1">
   <style>[hidden], .force-hidden { display: none !important; }</style>
-  <script src="app.js?v=1.2.0" defer></script>
+  <script src="app.js?v=1.2.1" defer></script>
 </head>
 <body>
   <main class="app">
@@ -188,6 +188,9 @@
       </div>
       <p class="muted live-safety-note" data-i18n="liveSafetyNote">Both devices should show the same safety code. If they differ, stop — the channel is not private.</p>
       <div class="live-transcript" id="liveTranscript" aria-live="polite"></div>
+      <div class="live-typing" id="liveTyping" hidden aria-label="The other device is typing…" data-i18n-aria-label="livePeerTyping">
+        <span></span><span></span><span></span>
+      </div>
       <form id="liveMsgForm" class="live-compose" novalidate>
         <textarea id="liveMsgInput" rows="2" maxlength="10000" placeholder="Message…" data-i18n-placeholder="livePlaceholder" autocomplete="off"></textarea>
         <button class="primary" type="submit" data-i18n="liveSend">Send</button>
@@ -199,7 +202,7 @@
       <strong data-i18n="codeUsed">Code used</strong>
       <span><span data-i18n="reloadPrefix">The page reloads in</span> <span id="reloadCountdown">5</span> <span data-i18n="seconds">seconds.</span></span>
     </div>
-    <div class="version-badge" aria-label="Version">v1.2.0</div>
+    <div class="version-badge" aria-label="Version">v1.2.1</div>
   </main>
 </body>
 </html>

@@ -53,6 +53,11 @@ a {
   padding: 18px;
 }
 
+/* The live chat gets more room to show conversation history. */
+.app.app-wide {
+  width: min(860px, 100%);
+}
+
 .lang-switch {
   justify-self: center;
   display: inline-grid;
@@ -618,8 +623,8 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  min-height: 240px;
-  max-height: 48vh;
+  min-height: 360px;
+  max-height: 64vh;
   overflow-y: auto;
   padding: 12px;
   border: 1px solid var(--line);
@@ -628,13 +633,54 @@ textarea:focus {
 }
 
 .live-msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   max-width: 82%;
   padding: 9px 12px;
   border-radius: 12px;
+  font-size: .94rem;
+}
+
+.live-msg-text {
+  flex: 1;
+  min-width: 0;
   line-height: 1.4;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: .94rem;
+  filter: blur(6px);
+  user-select: none;
+  transition: filter .15s ease;
+}
+
+.live-msg.revealed .live-msg-text {
+  filter: none;
+  user-select: text;
+}
+
+.live-msg-eye {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-top: -1px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, .14);
+  color: var(--text);
+  opacity: .75;
+}
+
+.live-msg-eye:hover,
+.live-msg-eye:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+
+.live-msg-eye svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
 }
 
 .live-msg-mine {
@@ -649,6 +695,35 @@ textarea:focus {
   background: rgba(255, 255, 255, .08);
   color: var(--text);
   border-bottom-left-radius: 4px;
+}
+
+.live-typing {
+  align-self: flex-start;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  width: fit-content;
+  margin-top: -2px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border-bottom-left-radius: 4px;
+  background: rgba(255, 255, 255, .08);
+}
+
+.live-typing span {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  animation: live-typing-bounce 1.2s infinite ease-in-out;
+}
+
+.live-typing span:nth-child(2) { animation-delay: .15s; }
+.live-typing span:nth-child(3) { animation-delay: .3s; }
+
+@keyframes live-typing-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: .4; }
+  30% { transform: translateY(-4px); opacity: 1; }
 }
 
 .live-compose {

@@ -88,7 +88,8 @@
       liveJoinFailed: "PIN is invalid, expired, or already in use.",
       livePinRequired: "Enter the 8-digit PIN.",
       liveConnectFailed: "Could not connect to the server.",
-      liveEnded: "Session ended."
+      liveEnded: "Session ended.",
+      livePeerTyping: "The other device is typing…"
     },
     da: {
       pageTitle: "One time share",
@@ -171,7 +172,8 @@
       liveJoinFailed: "PIN er ugyldig, udløbet eller allerede i brug.",
       livePinRequired: "Indtast den 8-cifrede PIN.",
       liveConnectFailed: "Kunne ikke oprette forbindelse til serveren.",
-      liveEnded: "Session afsluttet."
+      liveEnded: "Session afsluttet.",
+      livePeerTyping: "Den anden enhed skriver…"
     }
   };
 
@@ -186,6 +188,7 @@
   };
 
   const els = {
+    appRoot: document.querySelector("main.app"),
     langButtons: document.querySelectorAll("[data-lang]"),
     status: document.querySelector("#status"),
     usedToast: document.querySelector("#usedToast"),
@@ -224,6 +227,7 @@
     liveStatus: document.querySelector("#liveStatus"),
     liveSafetyCode: document.querySelector("#liveSafetyCode"),
     liveTranscript: document.querySelector("#liveTranscript"),
+    liveTyping: document.querySelector("#liveTyping"),
     liveMsgForm: document.querySelector("#liveMsgForm"),
     liveMsgInput: document.querySelector("#liveMsgInput")
   };
@@ -331,6 +335,7 @@
     Object.entries(views).forEach(([key, node]) => {
       setHidden(node, key !== id);
     });
+    els.appRoot.classList.toggle("app-wide", id === "liveChatView");
     setHidden(els.sendResult, true);
     setHidden(els.receiveResult, true);
     stopShareStatusWatch();
@@ -717,7 +722,8 @@
     keyPair: null, keysReady: null, myPubRaw: null, sessionKey: null,
     sendCounter: 0, lastRecvCounter: -1,
     active: false, closingByUser: false, reconnectAttempts: 0,
-    pinTimer: null, reconnectTimer: null
+    pinTimer: null, reconnectTimer: null,
+    typingSent: false, typingTimer: null, typingHideTimer: null
   };
 
   const liveSupported = () => Boolean(window.WebSocket && window.crypto && window.crypto.subtle);
@@ -814,16 +820,49 @@
     els.liveStatus.classList.toggle("live-status-warn", !ok);
   };
 
+  const EYE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Zm10 3a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/></svg>';
+
   const liveAppendMessage = (text, mine) => {
     const div = document.createElement("div");
     div.className = `live-msg ${mine ? "live-msg-mine" : "live-msg-peer"}`;
-    div.textContent = text;
+
+    const span = document.createElement("span");
+    span.className = "live-msg-text";
+    span.textContent = text; // textContent: never interpret message content as HTML
+
+    const eye = document.createElement("button");
+    eye.type = "button";
+    eye.className = "live-msg-eye";
+    eye.setAttribute("aria-label", t("toggleSecret"));
+    eye.innerHTML = EYE_SVG; // static markup, no user data
+    eye.addEventListener("click", () => div.classList.toggle("revealed"));
+
+    div.append(span, eye);
     els.liveTranscript.append(div);
     els.liveTranscript.scrollTop = els.liveTranscript.scrollHeight;
   };
 
+  const liveShowTyping = (on) => {
+    window.clearTimeout(lv.typingHideTimer);
+    if (on) {
+      setHidden(els.liveTyping, false);
+      els.liveTranscript.scrollTop = els.liveTranscript.scrollHeight;
+      // Safety net in case the "off" frame is lost.
+      lv.typingHideTimer = window.setTimeout(() => setHidden(els.liveTyping, true), 6000);
+    } else {
+      setHidden(els.liveTyping, true);
+    }
+  };
+
+  const liveSendTyping = (on) => {
+    if (!lv.sessionKey || lv.typingSent === on) return;
+    lv.typingSent = on;
+    liveWsSend({ t: "typing", on });
+  };
+
   const liveEnterChat = () => {
     els.liveTranscript.replaceChildren();
+    setHidden(els.liveTyping, true);
     els.liveSafetyCode.textContent = "····";
     els.liveMsgInput.value = "";
     showView("liveChatView");
@@ -853,6 +892,12 @@
     liveStopPinCountdown();
     window.clearTimeout(lv.reconnectTimer);
     lv.reconnectTimer = null;
+    window.clearTimeout(lv.typingTimer);
+    window.clearTimeout(lv.typingHideTimer);
+    lv.typingTimer = null;
+    lv.typingHideTimer = null;
+    lv.typingSent = false;
+    setHidden(els.liveTyping, true);
     if (lv.ws) { try { lv.ws.close(); } catch { /* ignore */ } }
     lv.ws = null;
     lv.role = null;
@@ -953,9 +998,13 @@
         return;
       case "msg":
         if (!lv.sessionKey) return;
+        liveShowTyping(false);
         try {
           liveAppendMessage(await liveDecrypt(m.data), false);
         } catch { /* drop bad/replayed frame */ }
+        return;
+      case "typing":
+        if (lv.sessionKey) liveShowTyping(Boolean(m.on));
         return;
       case "peer-disconnected":
         liveSetStatus("livePeerDisconnected", false);
@@ -1043,6 +1092,13 @@
     liveConnect(() => liveWsSend({ t: "join", pin }));
   });
 
+  els.liveMsgInput.addEventListener("input", () => {
+    if (!lv.sessionKey) return;
+    liveSendTyping(els.liveMsgInput.value.length > 0);
+    window.clearTimeout(lv.typingTimer);
+    lv.typingTimer = window.setTimeout(() => liveSendTyping(false), 1500);
+  });
+
   els.liveMsgInput.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
@@ -1055,6 +1111,9 @@
     const text = els.liveMsgInput.value;
     if (!text || !lv.sessionKey) return;
     if (Array.from(text).length > MAX_CHARS) return;
+
+    window.clearTimeout(lv.typingTimer);
+    liveSendTyping(false);
 
     try {
       const frame = await liveEncrypt(text);
